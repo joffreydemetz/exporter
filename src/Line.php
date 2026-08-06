@@ -38,7 +38,7 @@ class Line extends Row
       }
 
       if ('formula' === $cell->type || 'text' === $cell->type || 'phone' === $cell->type) {
-        $text = '="' . $cell->value . '"';
+        $text = '="' . str_replace('"', '""', (string)$cell->value) . '"';
         $dataType = DataType::TYPE_FORMULA;
       }
 

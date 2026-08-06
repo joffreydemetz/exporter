@@ -114,10 +114,45 @@ class ExporterTest extends TestCase
         $this->assertEquals('plain string', $sheet->getCell('D1')->getValue());
     }
 
-    public function testTooManyColumnsThrows(): void
+    public function testQuotesAreEscapedInFormulaCells(): void
     {
-        $this->expectExceptionMessage('Too many columns');
+        $exporter = new Exporter();
+        $sheet = $exporter->getSpreadsheet()->getSheet(0);
 
-        (new Header())->setData(array_fill(0, 27, 'x'));
+        $line = (new Line())->setData([
+            (object)['type' => 'text', 'value' => 'Ecole dite "Nationale"'],
+        ]);
+        $line->setRowNumber(1);
+        $line->toSpreadsheet($sheet);
+
+        $this->assertEquals('="Ecole dite ""Nationale"""', $sheet->getCell('A1')->getValue());
+    }
+
+    public function testMoreThan26Columns(): void
+    {
+        $exporter = new Exporter();
+        $sheet = $exporter->getSpreadsheet()->getSheet(0);
+
+        $header = (new Header())->setData(array_map(
+            static fn(int $i): string => 'col' . $i,
+            range(1, 30)
+        ));
+        $header->setRowNumber(1);
+        $header->toSpreadsheet($sheet);
+
+        $this->assertEquals('col26', $sheet->getCell('Z1')->getValue());
+        $this->assertEquals('col27', $sheet->getCell('AA1')->getValue());
+        $this->assertEquals('col30', $sheet->getCell('AD1')->getValue());
+    }
+
+    public function testContentTypeFollowsWriter(): void
+    {
+        $this->assertEquals('text/csv', (new Exporter())->withCsv()->getContentType());
+        $this->assertEquals('application/vnd.oasis.opendocument.spreadsheet', (new Exporter())->withOds()->getContentType());
+        $this->assertEquals('application/pdf', (new Exporter())->setWriter('pdf')->getContentType());
+        $this->assertEquals(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            (new Exporter())->getContentType()
+        );
     }
 }

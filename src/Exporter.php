@@ -179,18 +179,24 @@ class Exporter
 
   public function output(string $filename = 'export.xlsx'): static
   {
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    header('Content-Type: ' . $this->getContentType());
     header('Content-Disposition: attachment;filename="' . $filename . '"');
-    header('Cache-Control: max-age=0');
-    header('Cache-Control: max-age=1');
-    header('Expires: Mon, 26 Jul 1997 05:00:00 GMT');
-    header('Last-Modified: ' . gmdate('D, d M Y H:i:s') . ' GMT');
-    header('Cache-Control: cache, must-revalidate');
+    header('Cache-Control: max-age=0, must-revalidate');
     header('Pragma: public');
 
     $this->save('php://output');
 
     return $this;
+  }
+
+  public function getContentType(): string
+  {
+    return match ($this->writer) {
+      'csv' => 'text/csv',
+      'ods' => 'application/vnd.oasis.opendocument.spreadsheet',
+      'pdf' => 'application/pdf',
+      default => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    };
   }
 
   public function getSpreadsheet(): Spreadsheet

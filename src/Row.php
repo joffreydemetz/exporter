@@ -9,20 +9,16 @@
 
 namespace JDZ\Exporter;
 
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 /**
- * Spreadsheet row — cells are assigned to columns A..Z in insertion order.
+ * Spreadsheet row — cells are assigned to columns in insertion order.
  *
  * @author Joffrey Demetz <joffrey.demetz@gmail.com>
  */
 abstract class Row
 {
-  protected array $availableColumns = [
-    'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
-    'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z',
-  ];
-
   /** @var \stdClass[] keyed by column letter */
   protected array $cells = [];
 
@@ -72,10 +68,6 @@ abstract class Row
 
   protected function getNextColumn(): string
   {
-    if (!($x = array_shift($this->availableColumns))) {
-      throw new \Exception('Too many columns');
-    }
-
-    return $x;
+    return Coordinate::stringFromColumnIndex(count($this->cells) + 1);
   }
 }
