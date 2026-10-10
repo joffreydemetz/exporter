@@ -12,16 +12,15 @@ namespace JDZ\Exporter\Tests;
 use JDZ\Exporter\Exporter;
 use JDZ\Exporter\Header;
 use JDZ\Exporter\Line;
+use PHPUnit\Framework\Attributes\CoversClass;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PHPUnit\Framework\TestCase;
 
-/**
- * @covers \JDZ\Exporter\Exporter
- * @covers \JDZ\Exporter\Row
- * @covers \JDZ\Exporter\Header
- * @covers \JDZ\Exporter\Line
- */
+#[CoversClass(Exporter::class)]
+#[CoversClass(\JDZ\Exporter\Row::class)]
+#[CoversClass(Header::class)]
+#[CoversClass(Line::class)]
 class ExporterTest extends TestCase
 {
     private function rows(): array
