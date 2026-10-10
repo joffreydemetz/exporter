@@ -71,20 +71,28 @@ class Exporter
     return $this;
   }
 
+  /**
+   * false switches csv off: back to xlsx when csv was the writer, any other writer stays.
+   */
   public function withCsv(bool $csv = true): static
   {
-    $this->csv = $csv;
-    $this->ods = false;
-    $this->writer = 'csv';
-    return $this;
+    if (true === $csv) {
+      return $this->setWriter('csv');
+    }
+
+    return 'csv' === $this->writer ? $this->setWriter('xlsx') : $this;
   }
 
+  /**
+   * false switches ods off: back to xlsx when ods was the writer, any other writer stays.
+   */
   public function withOds(bool $ods = true): static
   {
-    $this->ods = $ods;
-    $this->csv = false;
-    $this->writer = 'ods';
-    return $this;
+    if (true === $ods) {
+      return $this->setWriter('ods');
+    }
+
+    return 'ods' === $this->writer ? $this->setWriter('xlsx') : $this;
   }
 
   public function setWriter(string $writer): static

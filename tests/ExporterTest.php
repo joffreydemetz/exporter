@@ -13,6 +13,9 @@ use JDZ\Exporter\Exporter;
 use JDZ\Exporter\Header;
 use JDZ\Exporter\Line;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\NumberFormat;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PHPUnit\Framework\TestCase;
@@ -23,6 +26,27 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(Line::class)]
 class ExporterTest extends TestCase
 {
+    /** @var string[] */
+    private array $tmpFiles = [];
+
+    protected function tearDown(): void
+    {
+        foreach ($this->tmpFiles as $path) {
+            if (is_file($path)) {
+                unlink($path);
+            }
+        }
+        $this->tmpFiles = [];
+    }
+
+    private function tmpPath(string $extension): string
+    {
+        $path = sys_get_temp_dir() . '/jdz-exporter-' . uniqid('', true) . '.' . $extension;
+        $this->tmpFiles[] = $path;
+
+        return $path;
+    }
+
     private function rows(): array
     {
         return [
@@ -57,17 +81,30 @@ class ExporterTest extends TestCase
         $exporter->setRows([], 'Empty');
     }
 
-    public function testWriterSelection(): void
+    public static function writerToggles(): array
     {
-        $this->assertEquals('csv', (new Exporter())->withCsv()->getWriter());
-        $this->assertEquals('ods', (new Exporter())->withOds()->getWriter());
-        $this->assertEquals('xlsx', (new Exporter())->setWriter('xlsx')->getWriter());
+        return [
+            'default' => [fn(Exporter $e) => $e, 'xlsx'],
+            'withCsv()' => [fn(Exporter $e) => $e->withCsv(), 'csv'],
+            'withOds()' => [fn(Exporter $e) => $e->withOds(), 'ods'],
+            'setWriter()' => [fn(Exporter $e) => $e->withCsv()->setWriter('xlsx'), 'xlsx'],
+            'withCsv(false) by default' => [fn(Exporter $e) => $e->withCsv(false), 'xlsx'],
+            'withCsv(false) after withCsv()' => [fn(Exporter $e) => $e->withCsv()->withCsv(false), 'xlsx'],
+            'withOds(false) keeps csv' => [fn(Exporter $e) => $e->withCsv()->withOds(false), 'csv'],
+            'withCsv(false) keeps ods' => [fn(Exporter $e) => $e->withOds()->withCsv(false), 'ods'],
+        ];
+    }
+
+    #[DataProvider('writerToggles')]
+    public function testWriterToggles(\Closure $toggle, string $writer): void
+    {
+        $this->assertSame($writer, $toggle(new Exporter())->getWriter());
     }
 
     public function testSaveWritesFilePerWriter(): void
     {
         foreach (['xlsx', 'csv', 'ods'] as $writer) {
-            $path = tempnam(sys_get_temp_dir(), 'jdzexp') . '.' . $writer;
+            $path = $this->tmpPath($writer);
 
             (new Exporter())
                 ->setWriter($writer)
@@ -77,7 +114,6 @@ class ExporterTest extends TestCase
 
             $this->assertFileExists($path);
             $this->assertGreaterThan(0, filesize($path), $writer . ' output is empty');
-            unlink($path);
         }
     }
 
@@ -153,5 +189,62 @@ class ExporterTest extends TestCase
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             (new Exporter())->getContentType()
         );
+    }
+
+
+    public function testEverySheetIsRenderedInOrder(): void
+    {
+        $book = (new Exporter())
+            ->setRows([['a' => 'first']], 'First')
+            ->setRows([['b' => 'x'], ['b' => 'y']], 'Second')
+            ->render()
+            ->getSpreadsheet();
+
+        $this->assertSame(['First', 'Second'], $book->getSheetNames());
+        $this->assertSame([['a'], ['first']], $book->getSheet(0)->toArray());
+        $this->assertSame([['b'], ['x'], ['y']], $book->getSheet(1)->toArray());
+    }
+
+    public function testCsvHoldsTheFirstSheetOnlySemicolonSeparatedAndQuoted(): void
+    {
+        $path = $this->tmpPath('csv');
+
+        (new Exporter())
+            ->setRows([['id' => 1, 'title' => 'One "quoted"'], ['id' => 2, 'title' => 'Two;semi']], 'Items')
+            ->setRows([['x' => 'other']], 'Other')
+            ->withCsv()
+            ->render()
+            ->save($path);
+
+        $this->assertSame(
+            implode(PHP_EOL, ['"id";"title"', '"1";"One ""quoted"""', '"2";"Two;semi"']) . PHP_EOL,
+            file_get_contents($path)
+        );
+    }
+
+    public static function cellStyles(): array
+    {
+        return [
+            'id: right, numeric' => ['id', 12, Alignment::HORIZONTAL_RIGHT, DataType::TYPE_NUMERIC, NumberFormat::FORMAT_GENERAL],
+            'number: right, numeric' => ['number', 3.5, Alignment::HORIZONTAL_RIGHT, DataType::TYPE_NUMERIC, NumberFormat::FORMAT_GENERAL],
+            'euro: numeric, whole euros' => ['euro', 12, Alignment::HORIZONTAL_LEFT, DataType::TYPE_NUMERIC, NumberFormat::FORMAT_CURRENCY_EUR_INTEGER],
+            'date: centred text' => ['date', '2024-03-05', Alignment::HORIZONTAL_CENTER, DataType::TYPE_STRING, NumberFormat::FORMAT_GENERAL],
+            'bool: centred' => ['bool', false, Alignment::HORIZONTAL_CENTER, DataType::TYPE_STRING, NumberFormat::FORMAT_GENERAL],
+            'string: left text' => ['string', 'abc', Alignment::HORIZONTAL_LEFT, DataType::TYPE_STRING, NumberFormat::FORMAT_GENERAL],
+        ];
+    }
+
+    #[DataProvider('cellStyles')]
+    public function testCellAlignmentTypeAndFormat(string $type, mixed $value, string $horizontal, string $dataType, string $format): void
+    {
+        $sheet = (new Exporter())->getSpreadsheet()->getSheet(0);
+
+        $line = (new Line())->setData([(object)['type' => $type, 'value' => $value]]);
+        $line->setRowNumber(1);
+        $line->toSpreadsheet($sheet);
+
+        $this->assertSame($horizontal, $sheet->getStyle('A1')->getAlignment()->getHorizontal());
+        $this->assertSame($dataType, $sheet->getCell('A1')->getDataType());
+        $this->assertSame($format, $sheet->getStyle('A1')->getNumberFormat()->getFormatCode());
     }
 }
